@@ -11,6 +11,20 @@ import (
 	"try-gqlgen-subscription_teyji/graph/model"
 )
 
+// SendNotification is the resolver for the sendNotification field.
+func (r *mutationResolver) SendNotification(ctx context.Context, message string) (bool, error) {
+	notification := &model.Notification{
+		Message:   message,
+		Timestamp: time.Now().Format(time.RFC3339),
+	}
+
+	for _, ch := range notificationSubscribers {
+		ch <- notification
+	}
+
+	return true, nil
+}
+
 // Placeholder is the resolver for the placeholder field.
 func (r *queryResolver) Placeholder(ctx context.Context) (*string, error) {
 	panic(fmt.Errorf("not implemented: Placeholder - placeholder"))
@@ -18,49 +32,44 @@ func (r *queryResolver) Placeholder(ctx context.Context) (*string, error) {
 
 // CurrentTime is the resolver for the currentTime field.
 func (r *subscriptionResolver) CurrentTime(ctx context.Context) (<-chan *model.Time, error) {
-	// First you'll need to `make()` your channel. Use your type here!
 	ch := make(chan *model.Time)
-
-	// You can (and probably should) handle your channels in a central place outside of `schema.resolvers.go`.
-	// For this example we'll simply use a Goroutine with a simple loop.
 	go func() {
-		// Handle deregistration of the channel here. Note the `defer`
 		defer close(ch)
-		flag := true
 		for {
-			// In our example we'll send the current time every second.
 			time.Sleep(1 * time.Second)
-			if flag {
-				fmt.Println("Tick")
-			} else {
-				fmt.Println("Tock")
-			}
-			flag = !flag
-			// Prepare your object.
 			currentTime := time.Now()
 			t := &model.Time{
 				UnixTime:  int(currentTime.Unix()),
 				TimeStamp: currentTime.Format(time.RFC3339),
 			}
-
-			// The subscription may have got closed due to the client disconnecting.
-			// Hence we do send in a select block with a check for context cancellation.
-			// This avoids goroutine getting blocked forever or panicking,
 			select {
-			case <-ctx.Done(): // This runs when context gets cancelled. Subscription closes.
+			case <-ctx.Done():
 				fmt.Println("Subscription Closed")
-				// Handle deregistration of the channel here. `close(ch)`
-				return // Remember to return to end the routine.
-
-			case ch <- t: // This is the actual send.
-				// Our message went through, do nothing
+				return
+			case ch <- t:
 			}
 		}
 	}()
-
-	// We return the channel and no error.
 	return ch, nil
 }
+
+// Notifications is the resolver for the notifications field.
+func (r *subscriptionResolver) Notifications(ctx context.Context) (<-chan *model.Notification, error) {
+	id := fmt.Sprintf("%v", time.Now().UnixNano())
+	ch := make(chan *model.Notification)
+	notificationSubscribers[id] = ch
+
+	go func() {
+		<-ctx.Done()
+		delete(notificationSubscribers, id)
+		close(ch)
+	}()
+
+	return ch, nil
+}
+
+// Mutation returns MutationResolver implementation.
+func (r *Resolver) Mutation() MutationResolver { return &mutationResolver{r} }
 
 // Query returns QueryResolver implementation.
 func (r *Resolver) Query() QueryResolver { return &queryResolver{r} }
@@ -68,5 +77,14 @@ func (r *Resolver) Query() QueryResolver { return &queryResolver{r} }
 // Subscription returns SubscriptionResolver implementation.
 func (r *Resolver) Subscription() SubscriptionResolver { return &subscriptionResolver{r} }
 
+type mutationResolver struct{ *Resolver }
 type queryResolver struct{ *Resolver }
 type subscriptionResolver struct{ *Resolver }
+
+// !!! WARNING !!!
+// The code below was going to be deleted when updating resolvers. It has been copied here so you have
+// one last chance to move it out of harms way if you want. There are two reasons this happens:
+//   - When renaming or deleting a resolver the old code will be put in here. You can safely delete
+//     it when you're done.
+//   - You have helper methods in this file. Move them out to keep these resolver files clean.
+var notificationSubscribers = map[string]chan *model.Notification{}

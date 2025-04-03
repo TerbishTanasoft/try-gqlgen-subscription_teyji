@@ -2,20 +2,20 @@
 
 package model
 
-// Make sure you have at least something in your `Query` type.
-// If you don't have a query the playground will be unable
-// to introspect your schema!
+type Mutation struct {
+}
+
+type Notification struct {
+	Message   string `json:"message"`
+	Timestamp string `json:"timestamp"`
+}
+
 type Query struct {
 }
 
-// `Subscription` is where all the subscriptions your clients can
-// request. You can use Schema Directives like normal to restrict
-// access.
 type Subscription struct {
 }
 
-// `Time` is a simple type only containing the current time as
-// a unix epoch timestamp and a string timestamp.
 type Time struct {
 	UnixTime  int    `json:"unixTime"`
 	TimeStamp string `json:"timeStamp"`
